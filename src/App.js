@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css';
-//**
+/**
 import cards from './cards.json'
 let fetchpage = async (page=1, type='mlb_card') => {
   const firstcard = (page-1) * 100
@@ -18,15 +18,22 @@ let fetchlisting = (uuid) => new Promise((res) => setTimeout(() => res({
 //*/
 
 
-/**
-let fetchpage = (page=1, type='mlb_card') => fetch(`https://mlb21.theshow.com/apis/listings.json?type=${type}&page=${page}`).then(r => r.json()).catch(e => {
-  console.error(e)
-  return fetchpage(page, type)
-})
-let fetchlisting = (uuid) => fetch(`https://mlb21.theshow.com/apis/listing.json?uuid=${uuid}`).then(r => r.json()).catch(e => {
-  console.error(e)
-  return fetchlisting(uuid)
-})
+//**
+let fetchpage = (page=1, type='mlb_card') =>
+  // fetch(`https://mlb21.theshow.com/apis/listings.json?type=${type}&page=${page}`, {
+  fetch(`https://mlb21.theshow.com/apis/listings.json?type=${type}&page=${page}&min_rank=82`, {
+    credentials: 'omit',
+  }).then(r => r.json()).catch(e => {
+    console.error(e)
+    // TODO: uncomment
+    // return fetchpage(page, type)
+  })
+let fetchlisting = (uuid) => fetch(`https://mlb21.theshow.com/apis/listing.json?uuid=${uuid}`, {
+    credentials: 'omit',
+  }).then(r => r.json()).catch(e => {
+    console.error(e)
+    return fetchlisting(uuid)
+  })
 //*/
 
 /**
@@ -79,11 +86,21 @@ const sortedbyovr = cards => cards.sort((ca,cb) => (cb.item.ovr - ca.item.ovr))
 
 // const filterRating = (low, high) => card => cards.filter(c => c.item.ovr >= low && c.item.ovr <= high)
 const filterRating = (low, high) => c => c.item.ovr >= low && c.item.ovr <= high
+const and = (...args) => v => args.every(fn => fn(v))
+const or = (...args) => v => args.some(fn => fn(v))
+const hasSmartSettings = v => localStorage.hasOwnProperty(v.item.uuid)
+const hasRoiMin = min => v => profitpct(v) >= min
 
 function App() {
+  const [instantiated, setInstantiated] = useState(Date.now())
   const [cards, setCards] = useState([])
-  const [lowLimit, setLowLimit] = useState(0)
+  // unused
+  const [criteria, setCriteria] = useState({ min_rank: null, max_rank: null })
+  const [details, setDetails] = useState({})
+  const [roiMin, setRoiMin] = useState(0)
+  const [lowLimit, setLowLimit] = useState(90)
   const [highLimit, setHighLimit] = useState(99)
+  const [loadAnyway, setLoadAnyway] = useState(false)
   useEffect(() => {
     const p1 = fetchpage(1)
     let fetchall = (type) => p1.then(r => r.total_pages).then( pages => {
@@ -92,17 +109,14 @@ function App() {
           .map(p => fetchpage(p))
       fetchedarr.forEach(async p => {
         const newc = (await p).listings
-        cards = cards.concat(newc)
-        sortedbyovr(cards)
-        console.log(cards.length)
-        setCards([...cards])
+        setCards(cards => sortedbyovr(cards.concat(newc)))
       })
       return Promise.all(fetchedarr)
     })
     fetchall()
      // setCards((await fetchall()).flatMap(l => l))
-  }, [])
-  const filter = filterRating(lowLimit, highLimit)
+  }, [instantiated])
+  const filter = or(and(hasRoiMin(roiMin), filterRating(lowLimit, highLimit)), hasSmartSettings)
   const sorter = sorterfn => () => setCards([...cards].sort((a,b) => sorterfn(a) > sorterfn(b) ? -1 : sorterfn(a) < sorterfn(b) ? 1 : 0 ))
   return (
     <div className="App">
@@ -119,6 +133,22 @@ function App() {
           value={Math.max(lowLimit, highLimit)}
           onChange={e => setHighLimit(Math.max(+e.target.value, lowLimit))}
         /> {highLimit}
+        ROI min: <input type="range"
+          min={-100}
+          max={100}
+          value={Math.max(roiMin)}
+          onChange={e => setRoiMin(+e.target.value)}
+        /> {roiMin}
+        <button onClick={() => setCriteria({
+          min_rank: lowLimit,
+          max_rank: highLimit,
+        })}>Search</button>
+        <button onClick={() => setLoadAnyway(true)}>Load Details</button>
+        <button onClick={() => {
+          setCards([])
+          setDetails({})
+          setInstantiated(Date.now())
+        }}>Reset</button>
       </div>
       <table>
 
@@ -139,14 +169,24 @@ function App() {
           <th onClick={ sorter(card => card.best_sell_price ) }>Best Sell</th>
           <th onClick={ sorter(profit) }>Profit</th>
           <th onClick={ sorter(profitpct) }>ROI%</th>
-          <th>M/S</th>
-          <th>S/M</th>
-          <th>PPM</th>
+          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).mps || 0) }>M/S</th>
+          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).spm || 0) }>S/M</th>
+          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).ppm || 0) }>PPM</th>
     </tr>
       </thead>
       <tbody>
       {/* filtered(cards).map(c => <Card key={c.item.uuid} card={c} />) */}
-      { (cards).map(c => <Card key={c.item.uuid} card={c} filter={filter} />) }
+      { (cards).filter(filter).map(c =>
+        <Card key={c.item.uuid}
+          card={cardsummary(c, details[c.item.uuid])}
+          filter={filter}
+          details={details[c.item.uuid]}
+          loadAnyway={loadAnyway}
+          addDetail={detail => {
+            // debugger
+            setDetails(details => ({ [c.item.uuid]: detail, ...details }))
+          }}
+          />) }
       </tbody></table>
     </div>
   );
@@ -169,34 +209,99 @@ let spm = l => {
   let hoursworth = l.completed_orders.filter(o => (new Date(o.date)).getTime() > mostrecent - 1000 * 60 * 60)
   return hoursworth.length / 60
 }
-const Card = ({ card, filter }) => {
-  const [ fetched, setFetched ] = useState(false)
+const cardsummary = (card, details) => {
+  const {
+    listing_name,
+    item: {
+      uuid,
+      ovr,
+      rarity,
+      series,
+      team,
+    },
+    best_buy_price,
+    best_sell_price,
+  } = card;
+  const [ profit_amount, profit_percent ] = [ profit(card), profitpct(card) ]
+  return ({
+  listing_name,
+  uuid,
+  item: {
+    uuid,
+    ovr,
+    rarity,
+    series,
+    team,
+  },
+  ovr,
+  rarity,
+  series,
+  team,
+  best_buy_price,
+  best_sell_price,
+  profit_amount,
+  profit_percent,
+  mps: details ? mps(details) : undefined,
+  spm: details ? spm(details) : undefined,
+  ppm: details ? Math.round(profit(card) / mps(details)) : undefined,
+  /*
+  listing_name: card.listing_name
+  ovr: card.item.ovr
+  rarity: card.item.rarity
+  series: card.item.series
+  team: card.item.team
+  best_buy_price: card.best_buy_price
+  best_sell_price: card.best_sell_price
+  profit: (profit(card))
+  profitpct: profitpct(card)
+  */
+  /*
+  card.listing_name,
+  card.item.ovr,
+  card.item.rarity,
+  card.item.series,
+  card.item.team,
+  card.best_buy_price,
+  card.best_sell_price,
+  */
+  // profit: (profit(card)),
+  // profitpct: profitpct(card),
+  // mps: details ? mps(details) : undefined,
+  // spm: details ? spm(details) : undefined,
+  // ppm: details ? Math.round(profit(card) / mps(details)),
+})
+}
+const Card = ({ card, filter, addDetail, details, loadAnyway }) => {
   const [ fetching, setFetching ] = useState(false)
-  const [ details, setDetails ] = useState(null)
   const ref = useRef()
   const isVisible = useOnScreen(ref)
+  const shouldHide = !filter(card)
   useEffect(() => {
-    if (fetching || fetched || !isVisible) return;
+    if (details) return;
+    if (shouldHide || fetching || !(isVisible || loadAnyway)) return;
     setFetching(true)
     fetchlisting(card.item.uuid)
-      .then(setDetails)
-      .then(() => setFetched(true))
-  }, [isVisible, fetching, fetched, card.item.uuid])
+      .then(v => {
+        // setDetails(v)
+        setFetching(false)
+        addDetail(v)
+      })
+  }, [isVisible, fetching, card.item.uuid, addDetail, loadAnyway, shouldHide])
 
   return (
     <tr ref={ref} style={{display: filter(card) ? '' : 'none' }}>
-    <td>{ card.listing_name }</td>
-    <td>{ card.item.ovr }</td>
-    <td>{ card.item.rarity }</td>
-    <td>{ card.item.series }</td>
-    <td>{ card.item.team }</td>
+    <td><a href={`/items/${card.item.uuid}`} target="_blank">{ hasSmartSettings(card) && '**' }{ card.listing_name }</a></td>
+    <td>{ card.ovr }</td>
+    <td>{ card.rarity }</td>
+    <td>{ card.series }</td>
+    <td>{ card.team }</td>
     <td>{ card.best_buy_price.toLocaleString() }</td>
     <td>{ card.best_sell_price.toLocaleString() }</td>
-    <td>{ (profit(card)).toLocaleString() }</td>
-    <td>{ profitpct(card) }%</td>
-    <td>{ details ? mps(details).toFixed(1) : fetching ? '...' : 'MPS' }</td>
-    <td>{ details ? spm(details).toFixed(1) : fetching ? '...' : 'SPM' }</td>
-    <td>{ details ? Math.round(profit(card) / mps(details)).toLocaleString() : fetching ? '...' : 'PPM' }</td>
+    <td>{ card.profit_amount.toLocaleString() }</td>
+    <td>{ card.profit_percent }%</td>
+    <td>{ card.mps != null ? card.mps.toFixed(1) : fetching ? '...' : 'MPS' }</td>
+    <td>{ card.spm != null ? card.spm.toFixed(1) : fetching ? '...' : 'SPM' }</td>
+    <td style={{ textAlign: 'right' }}>{ card.ppm != null ? card.ppm.toLocaleString() : fetching ? '...' : 'PPM' }</td>
     </tr>
     )
 }
