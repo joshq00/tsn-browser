@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/tsn-browser/static/css/main.e4cf2f28.chunk.css",
+    "main.js": "/tsn-browser/static/js/main.d7b1ab14.chunk.js",
+    "main.js.map": "/tsn-browser/static/js/main.d7b1ab14.chunk.js.map",
+    "runtime-main.js": "/tsn-browser/static/js/runtime-main.e60025f1.js",
+    "runtime-main.js.map": "/tsn-browser/static/js/runtime-main.e60025f1.js.map",
+    "static/js/2.bd06eb53.chunk.js": "/tsn-browser/static/js/2.bd06eb53.chunk.js",
+    "static/js/2.bd06eb53.chunk.js.map": "/tsn-browser/static/js/2.bd06eb53.chunk.js.map",
+    "static/js/3.63e0d7da.chunk.js": "/tsn-browser/static/js/3.63e0d7da.chunk.js",
+    "static/js/3.63e0d7da.chunk.js.map": "/tsn-browser/static/js/3.63e0d7da.chunk.js.map",
+    "index.html": "/tsn-browser/index.html",
+    "static/css/main.e4cf2f28.chunk.css.map": "/tsn-browser/static/css/main.e4cf2f28.chunk.css.map",
+    "static/js/2.bd06eb53.chunk.js.LICENSE.txt": "/tsn-browser/static/js/2.bd06eb53.chunk.js.LICENSE.txt"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.e60025f1.js",
+    "static/js/2.bd06eb53.chunk.js",
+    "static/css/main.e4cf2f28.chunk.css",
+    "static/js/main.d7b1ab14.chunk.js"
+  ]
+}
