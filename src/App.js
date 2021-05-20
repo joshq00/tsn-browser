@@ -94,13 +94,23 @@ const hasRoiMin = min => v => profitpct(v) >= min
 function App() {
   const [instantiated, setInstantiated] = useState(Date.now())
   const [cards, setCards] = useState([])
+  // const [sorter, setSorter] = useState(() => () => 0)
+  const [sorter, setSorter] = useState(() => (a) => a.item.ovr % 10)
   // unused
   const [criteria, setCriteria] = useState({ min_rank: null, max_rank: null })
   const [details, setDetails] = useState({})
+  const [spmMin, setSpmMin] = useState(0)
   const [roiMin, setRoiMin] = useState(0)
   const [lowLimit, setLowLimit] = useState(90)
   const [highLimit, setHighLimit] = useState(99)
   const [loadAnyway, setLoadAnyway] = useState(false)
+
+  const hasSPMMin = min => c => details[c.item.uuid] ? spm(details[c.item.uuid]) >= min : true
+  const filter = or(and(hasRoiMin(roiMin), filterRating(lowLimit, highLimit), hasSPMMin(spmMin)), hasSmartSettings)
+  // const meownfuckinsorter = c => cardsummary(c, details[c.item.uuid]).ppm || 0
+  const meownfuckinsorter = c => details[c.item.uuid] ? (details[c.item.uuid].med_profit || 0) * (details[c.item.uuid].spm || 0) : 0
+  const meownfuckinsort = (a, b) => meownfuckinsorter(a) > meownfuckinsorter(b) ? -1 : meownfuckinsorter(a) < meownfuckinsorter(b) ? 1 : 0
+
   useEffect(() => {
     const p1 = fetchpage(1)
     let fetchall = (type) => p1.then(r => r.total_pages).then( pages => {
@@ -109,15 +119,14 @@ function App() {
           .map(p => fetchpage(p))
       fetchedarr.forEach(async p => {
         const newc = (await p).listings
-        setCards(cards => sortedbyovr(cards.concat(newc)))
+        setCards(cards => cards.concat(newc).sort(meownfuckinsort))
       })
       return Promise.all(fetchedarr)
     })
     fetchall()
      // setCards((await fetchall()).flatMap(l => l))
   }, [instantiated])
-  const filter = or(and(hasRoiMin(roiMin), filterRating(lowLimit, highLimit)), hasSmartSettings)
-  const sorter = sorterfn => () => setCards([...cards].sort((a,b) => sorterfn(a) > sorterfn(b) ? -1 : sorterfn(a) < sorterfn(b) ? 1 : 0 ))
+
   return (
     <div className="App">
       <div>
@@ -139,6 +148,14 @@ function App() {
           value={Math.max(roiMin)}
           onChange={e => setRoiMin(+e.target.value)}
         /> {roiMin}
+        SPM min: <input type="range"
+          min={0}
+          max={100}
+          value={spmMin * 10}
+          onChange={e => setSpmMin(+(e.target.value) / 10)}
+        /> {spmMin}
+        </div>
+        <div>
         <button onClick={() => setCriteria({
           min_rank: lowLimit,
           max_rank: highLimit,
@@ -160,33 +177,38 @@ function App() {
 
       <thead>
           <tr>
-          <th onClick={ sorter(c => c.listing_name) }>Name</th>
-          <th onClick={ sorter(c => c.item.ovr) }>Overall</th>
-          <th onClick={ sorter(card => card.item.rarity ) }>Rarity</th>
-          <th onClick={ sorter(card => card.item.series ) }>Series</th>
-          <th onClick={ sorter(card => card.item.team ) }>Team</th>
-          <th onClick={ sorter(card => card.best_buy_price ) }>Best Buy</th>
-          <th onClick={ sorter(card => card.best_sell_price ) }>Best Sell</th>
-          <th onClick={ sorter(profit) }>Profit</th>
-          <th onClick={ sorter(profitpct) }>ROI%</th>
-          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).mps || 0) }>M/S</th>
-          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).spm || 0) }>S/M</th>
-          <th onClick={ sorter(c => cardsummary(c, details[c.item.uuid]).ppm || 0) }>PPM</th>
+          <th onClick={ () => setSorter(() => c => c.listing_name) }>Name</th>
+          <th onClick={ () => setSorter(() => c => c.item.ovr) }>Overall</th>
+          <th onClick={ () => setSorter(() => card => card.item.rarity ) }>Rarity</th>
+          <th onClick={ () => setSorter(() => card => card.item.series ) }>Series</th>
+          <th onClick={ () => setSorter(() => card => card.item.team ) }>Team</th>
+          <th onClick={ () => setSorter(() => card => card.best_buy_price ) }>Best Buy</th>
+          <th onClick={ () => setSorter(() => card => card.best_sell_price ) }>Best Sell</th>
+          <th onClick={ () => setSorter(() => profit) }>Profit</th>
+          <th onClick={ () => setSorter(() => profitpct) }>ROI%</th>
+          <th onClick={ () => setSorter(() => c => cardsummary(c, details[c.item.uuid]).mps || 0) }>M/S</th>
+          <th onClick={ () => setSorter(() => c => cardsummary(c, details[c.item.uuid]).spm || 0) }>S/M</th>
+          <th onClick={ () => setSorter(() => meownfuckinsorter) }>PPM</th>
     </tr>
       </thead>
       <tbody>
       {/* filtered(cards).map(c => <Card key={c.item.uuid} card={c} />) */}
-      { (cards).filter(filter).map(c =>
-        <Card key={c.item.uuid}
-          card={cardsummary(c, details[c.item.uuid])}
-          filter={filter}
-          details={details[c.item.uuid]}
-          loadAnyway={loadAnyway}
-          addDetail={detail => {
-            // debugger
-            setDetails(details => ({ [c.item.uuid]: detail, ...details }))
-          }}
-          />) }
+      { (cards)
+          .filter(filter)
+          // .sort(meownfuckinsort)
+          .sort((a,b) => sorter(a) > sorter(b) ? -Math.random() : sorter(a) < sorter(b) ? Math.random() : 0 )
+          .map(c =>
+          <Card key={c.item.uuid}
+            card={cardsummary(c, details[c.item.uuid])}
+            filter={filter}
+            details={details[c.item.uuid]}
+            loadAnyway={loadAnyway}
+            addDetail={detail => {
+              // debugger
+              setDetails(details => Object.assign({}, details, { [c.item.uuid]: detail }))
+            }}
+            />)
+        }
       </tbody></table>
     </div>
   );
@@ -209,7 +231,54 @@ let spm = l => {
   let hoursworth = l.completed_orders.filter(o => (new Date(o.date)).getTime() > mostrecent - 1000 * 60 * 60)
   return hoursworth.length / 60
 }
-const cardsummary = (card, details) => {
+const medsell = l => {
+  let mostrecent = (new Date(l.completed_orders[0].date)).getTime()
+  const price = t => Number(t.price.replace(',', ''))
+  let hoursworth = l.completed_orders.filter(o => (new Date(o.date)).getTime() > mostrecent - 1000 * 60 * 60)
+    .map(price)
+    .sort()
+    .reverse()
+  // hoursworth.sort((ta, tb) => price(tb) - price(ta))
+  const buys = hoursworth.slice(0, Math.round(hoursworth.length / 2))
+  // return price(buys[Math.round(buys.length / 2)])
+  return buys[Math.round(buys.length / 2)]
+}
+const medbuy = l => {
+  // let mostrecent = (new Date(l.completed_orders[0].date)).getTime()
+  // let hoursworth = l.completed_orders.filter(o => (new Date(o.date)).getTime() > mostrecent - 1000 * 60 * 60)
+  // const price = t => Number(t.price.replace(/,/g, ''))
+  // hoursworth.sort((ta, tb) => price(tb) - price(ta))
+  // const sells = hoursworth.slice(-Math.round(hoursworth.length / 2))
+  // return price(sells[Math.round(sells.length / 2)])
+  let mostrecent = (new Date(l.completed_orders[0].date)).getTime()
+  const price = t => Number(t.price.replace(',', ''))
+  let hoursworth = l.completed_orders.filter(o => (new Date(o.date)).getTime() > mostrecent - 1000 * 60 * 60)
+    .map(price)
+    .sort()
+    .reverse()
+  // hoursworth.sort((ta, tb) => price(tb) - price(ta))
+  const buys = hoursworth.slice(-Math.round(hoursworth.length / 2))
+  // return price(buys[Math.round(buys.length / 2)])
+  return buys[Math.round(buys.length / 2)]
+}
+
+const medprofit = l => {
+  return medsell(l) * .9 - medbuy(l)
+}
+const cardsummary = (card, details) => ({
+  ...card,
+  profit_amount: profit(card),
+  profit_percent: profitpct(card),
+  med_buy: details ? details.med_buy : undefined,
+  med_sell: details ? details.med_sell : undefined,
+  med_profit: details ? details.med_profit : undefined,
+  mps: details ? mps(details) : undefined,
+  spm: details ? spm(details) : undefined,
+  // ppm: details ? Math.round(profit(card) / mps(details)) : undefined,
+  // ppm: details ? medprofit(details) * spm(details) : undefined,
+  ppm: details ? Math.round(details.med_profit * details.spm) : undefined,
+})
+const cardsummaryz = (card, details) => {
   const {
     listing_name,
     item: {
@@ -241,9 +310,13 @@ const cardsummary = (card, details) => {
   best_sell_price,
   profit_amount,
   profit_percent,
+  med_buy: details ? medbuy(details) : undefined,
+  med_sell: details ? medsell(details) : undefined,
+  med_profit: details ? medprofit(details) : undefined,
   mps: details ? mps(details) : undefined,
   spm: details ? spm(details) : undefined,
-  ppm: details ? Math.round(profit(card) / mps(details)) : undefined,
+  // ppm: details ? Math.round(profit(card) / mps(details)) : undefined,
+  // ppm: details ? medprofit(details) * spm(details) : undefined,
   /*
   listing_name: card.listing_name
   ovr: card.item.ovr
@@ -284,17 +357,17 @@ const Card = ({ card, filter, addDetail, details, loadAnyway }) => {
       .then(v => {
         // setDetails(v)
         setFetching(false)
-        addDetail(v)
+        addDetail({...v, med_buy: medbuy(v), med_sell: medsell(v), med_profit: medprofit(v), spm: spm(v), mps: mps(v) })
       })
   }, [isVisible, fetching, card.item.uuid, addDetail, loadAnyway, shouldHide])
 
   return (
     <tr ref={ref} style={{display: filter(card) ? '' : 'none' }}>
     <td><a href={`/items/${card.item.uuid}`} target="_blank">{ hasSmartSettings(card) && '**' }{ card.listing_name }</a></td>
-    <td>{ card.ovr }</td>
-    <td>{ card.rarity }</td>
-    <td>{ card.series }</td>
-    <td>{ card.team }</td>
+    <td>{ card.item.ovr }</td>
+    <td>{ card.item.rarity }</td>
+    <td>{ card.item.series }</td>
+    <td>{ card.item.team }</td>
     <td>{ card.best_buy_price.toLocaleString() }</td>
     <td>{ card.best_sell_price.toLocaleString() }</td>
     <td>{ card.profit_amount.toLocaleString() }</td>
